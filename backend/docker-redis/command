@@ -1,0 +1,10 @@
+
+docker ps -a  # see all containers
+docker rm -f redis_container  # force-remove the old container
+
+docker rm -f redis_server
+docker rm -f 6c7c3b6b087b
+
+
+docker-compose down --volumes  # just to be safe
+docker-compose up --build -d

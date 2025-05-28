@@ -1,0 +1,33 @@
+{
+  "id": "gen-1746435415-nUkkQUERWCZMlJbgAahX",
+  "provider": "OpenAI",
+  "model": "openai/gpt-4o-mini",
+  "object": "chat.completion",
+  "created": 1746435415,
+  "choices": [
+    {
+      "logprobs": null,
+      "finish_reason": "stop",
+      "native_finish_reason": "stop",
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"meal_name\": \"Banana - Test\",\n  \"estimated_calories\": 105,\n  \"macronutrients\": {\n    \"proteins\": \"1.3g\",\n    \"carbohydrates\": \"27g\",\n    \"fats\": \"0.3g\"\n  },\n  \"estimated_weight\": \"120g\",\n  \"weight_estimation_details\": [\n    \"1 Banana \u00d7 120g = 120g\"\n  ],\n  \"ingredients\": [\"Banana\"],\n  \"cooking_state\": \"raw\",\n  \"assumptions\": [\n    \"The banana is estimated to weigh around 120 grams based on typical banana sizes.\",\n    \"Visual inspection indicates that it is ripe but not overly overripe.\"\n  ],\n  \"health_assessment\": \"A banana provides a good source of carbohydrates and is rich in potassium, making it a healthy snack option. The low protein and fat content may not be suitable as a standalone meal.\",\n  \"source\": \"USDA FoodData Central: https://fdc.nal.usda.gov\",\n  \"confidence_level\": \"high\",\n  \"judge\": {\n    \"final_meal_name\": \"Banana\",\n    \"estimated_total_calories\": 105,\n    \"macronutrients\": {\n      \"protein_grams\": 1.3,\n      \"fat_grams\": 0.3,\n      \"carbohydrate_grams\": 27\n    },\n    \"final_ingredients_list\": [\"Banana\"],\n    \"final_assumptions\": [\n      \"The banana is approximately 120 grams based on common weight for a medium-sized banana.\"\n    ],\n    \"cooking_state\": \"raw\",\n    \"source\": \"expert visual analysis and common food knowledge\",\n    \"judge_estimation_calories\": {\n      \"total_estimated_calories\": 105,\n      \"ingredient_breakdown\": [\n        {\n          \"ingredient\": \"Banana\",\n          \"estimated_weight_grams\": 120,\n          \"estimated_kcal_per_gram\": 0.88,\n          \"estimated_calories\": 105,\n          \"weight_estimation_steps\": [\n            \"Banana was visually assessed to be around 120 grams.\"\n          ]\n        }\n      ],\n      \"calculation_method\": \"calculated by summing the estimated calories of each ingredient based on estimated weight and kcal/gram values.\"\n    }\n  }\n}",
+        "refusal": null,
+        "reasoning": null
+      }
+    }
+  ],
+  "system_fingerprint": "fp_129a36352a",
+  "usage": {
+    "prompt_tokens": 15285,
+    "completion_tokens": 486,
+    "total_tokens": 15771,
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  }
+}

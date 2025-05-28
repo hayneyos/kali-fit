@@ -1,0 +1,22 @@
+services:
+  mongo:
+    image: mongo:6
+    container_name: mongo_container
+    restart: always
+    env_file:
+      - .env
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
+    ports:
+      - "27017:27017"
+    volumes:
+      - /home/data/mongo_data:/data/db
+      - ./mongod.conf:/etc/mongo/mongod.conf  # ✅ Mount the file
+    healthcheck:
+      test: ["CMD", "mongo", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+#    command: ["mongod", "--config", "/etc/mongo/mongod.conf"]
+    command: ["mongod", "--bind_ip_all"]

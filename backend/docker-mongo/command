@@ -1,0 +1,13 @@
+
+docker ps -a  # see all containers
+docker rm -f mongo_container  # force-remove the old container
+
+
+docker rm -f 2cd084a2dfde
+
+docker-compose down --volumes  # just to be safe
+docker-compose up --build -d
+
+docker-compose down -v  # stops and deletes containers + volumes (data will be erased)
+docker rm -f mongo_container
+docker volume prune
