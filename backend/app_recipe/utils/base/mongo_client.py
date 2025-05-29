@@ -45,7 +45,7 @@ def get_mongo_client() -> MongoClient:
 
 # Initialize MongoDB client and collections
 client = get_mongo_client()
-db = client['recipe_db_v3']
+db = client['recipe_db_v4']
 
 # Collection references
 recipes_v3 = db['recipes_v3']

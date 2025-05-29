@@ -1,6 +1,8 @@
 import os
 import sys
 
+from backend.app_recipe.utils.logger import LoggerConfig, get_logger
+
 # Add the project root to the Python path
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 sys.path.insert(0, project_root)
@@ -18,8 +20,9 @@ import redis
 from dotenv import load_dotenv
 import uvicorn
 # from backend.app_recipe.middleware.rate_limiter import RateLimitMiddleware
-from backend.app_recipe.routes.recipe_routes import router as recipe_router
-from backend.app_recipe.utils.base.logger import LoggerConfig, get_logger
+# from backend.app_recipe.routes.recipe_routes import router as recipe_router
+from backend.app_recipe.routes.recipe_routes_v4 import router as recipe_router
+
 
 # Configure logger
 logger_config = LoggerConfig(
