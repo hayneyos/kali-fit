@@ -1,0 +1,18 @@
+services:
+  kaila-app:
+    build:
+      context: .
+    ports:
+      - "8093:8093"
+    container_name: kaila-new-backend-container
+    env_file:
+      - app/.env  # 👈 path to your .env file inside the project
+    volumes:
+      - /mnt/volume_nyc1_01/data/kaila:/usr/src/backend/data           # DATA_DIR
+      - /mnt/volume_nyc1_01/data/kaila/logs:/usr/src/backend/logs           # LOG_DIR
+      - /mnt/volume_nyc1_01/data/kaila/uploads:/usr/src/backend/app/static  # ✅ only this
+
+    environment:
+      - DATA_DIR=/usr/src/backend/data
+      - LOG_DIR=/usr/src/backend/logs
+      - RUNNING_IN_DOCKER=true
