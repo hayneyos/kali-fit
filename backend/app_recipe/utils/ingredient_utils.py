@@ -6,7 +6,8 @@ from datetime import datetime
 import os
 from dotenv import load_dotenv
 
-from backend.app_recipe.utils.base.mongo_client import normalized_ingredients_collection
+from backend.app_recipe.utils.base.mongo_client import normalized_ingredients_collection, ingredient_names_collection, \
+    ingredients_nutrition_collection, ingredient_categories_collection
 
 # Load environment variables
 load_dotenv()
@@ -111,65 +112,113 @@ def flatten_names_data(names_data: List[Dict]) -> List[Dict]:
 
 def get_ingredients_dataframe() -> pd.DataFrame:
     """
-    Get ingredient data from the normalized_ingredients collection.
+    Get ingredient data by merging ingredient_names_v3, ingredients_nutrition_v3, and ingredient_categories_v3 collections.
 
     Returns:
-        pd.DataFrame: Ingredient data with nutrition information
+        pd.DataFrame: Merged ingredient data with nutrition and category information
     """
     try:
-        # Get all documents from the collection
-        names_data = list(normalized_ingredients_collection.find({}))
+        # Get all documents from all collections
+        names_data = list(ingredient_names_collection.find({}))
+        nutrition_data = list(ingredients_nutrition_collection.find({}))
+        categories_data = list(ingredient_categories_collection.find({}))
 
-        # Flatten the names data before creating DataFrame
-        flattened_names_data = flatten_names_data(names_data)
+        # Create DataFrames
+        names_df = pd.DataFrame(names_data)
+        nutrition_df = pd.DataFrame(nutrition_data)
+        categories_df = pd.DataFrame(categories_data)
 
-        # Create DataFrame
-        names_df = pd.DataFrame(flattened_names_data)
-
-        # Print column names for debugging
         print("\nNames DataFrame columns:", names_df.columns.tolist())
+        print("\nNutrition DataFrame columns:", nutrition_df.columns.tolist())
+        print("\nCategories DataFrame columns:", categories_df.columns.tolist())
+
+        # Merge names and nutrition on nutrition_id
+        merged_df = pd.merge(
+            names_df,
+            nutrition_df,
+            left_on='nutrition_id',
+            right_on='_id',
+            how='left',
+            suffixes=('_names', '_nutrition')
+        )
+
+        # Ensure category_id is present for the next merge
+        if 'category_id_x' in merged_df.columns:
+            merged_df['category_id'] = merged_df['category_id_x']
+        elif 'category_id' not in merged_df.columns and 'category_id_y' in merged_df.columns:
+            merged_df['category_id'] = merged_df['category_id_y']
+
+        # # Merge with categories on category_id
+        # merged_df = pd.merge(
+        #     merged_df,
+        #     categories_df[['name', '_id']],
+        #     left_on='category_id_names',
+        #     right_on='_id',
+        #     how='left',
+        #     suffixes=('', '_category')
+        # )
+
+        # Rename the category name column for clarity
+        # merged_df = merged_df.rename(columns={'name': 'category_name'})
 
         # Select and rename columns
         columns_to_keep = {
-            '_id': 'names_id',
-            'category_name': 'category_name',
+            '_id_names': 'names_id',
+            '_id_nutrition': 'nutrition_id',
             'category_id': 'category_id',
-            'nutrition_id': 'nutrition_id',
+            'category_name': 'category_name',
             'primary_name': 'primary_name',
-            'weight': 'weight',
-            'proteins': 'proteins',
-            'carbohydrates': 'carbohydrates',
-            'fats': 'fats',
-            'calories': 'calories',
-            'proteins_per_100g': 'proteins_per_100g',
-            'carbohydrates_per_100g': 'carbohydrates_per_100g',
-            'fats_per_100g': 'fats_per_100g',
-            'calories_per_100g': 'calories_per_100g',
-            'english_name': 'english_name',
-            'english_synonyms': 'english_synonyms',
-            'russian_name': 'russian_name',
-            'russian_synonyms': 'russian_synonyms',
-            'spanish_name': 'spanish_name',
-            'spanish_synonyms': 'spanish_synonyms',
-            'hebrew_name': 'hebrew_name',
-            'hebrew_synonyms': 'hebrew_synonyms',
+            'language': 'language',
+            'form': 'form',
+            'name': 'name',
+            'synonyms': 'synonyms',
+            'possible_measurement': 'possible_measurement',
+            'base_ingredient_name': 'base_ingredient_name',
+            'average_weight': 'average_weight',
+            'data_sources': 'data_sources',
+            'created_at': 'created_at',
             'last_updated': 'last_updated'
         }
 
         # Check which columns exist in the DataFrame
-        existing_columns = [col for col in columns_to_keep.keys() if col in names_df.columns]
+        existing_columns = [col for col in columns_to_keep.keys() if col in merged_df.columns]
         if not existing_columns:
             raise ValueError("No matching columns found in DataFrame")
 
         # Create final DataFrame with only existing columns
-        final_df = names_df[existing_columns].rename(columns=columns_to_keep)
+        final_df = merged_df[existing_columns].rename(columns=columns_to_keep)
+
+        # Extract nutrition data from data_sources
+        def extract_latest_nutrition(data_sources):
+            if not data_sources or not isinstance(data_sources, list):
+                return pd.Series({
+                    'proteins_per_100g': None,
+                    'carbohydrates_per_100g': None,
+                    'fats_per_100g': None,
+                    'calories_per_100g': None,
+                    'source': None
+                })
+            # Get the latest data source
+            latest_source = max(data_sources, key=lambda x: x.get('last_updated', datetime.min))
+            return pd.Series({
+                'proteins_per_100g': latest_source.get('proteins_per_100g'),
+                'carbohydrates_per_100g': latest_source.get('carbohydrates_per_100g'),
+                'fats_per_100g': latest_source.get('fats_per_100g'),
+                'calories_per_100g': latest_source.get('calories_per_100g'),
+                'source': latest_source.get('source')
+            })
+
+        # Apply the extraction function
+        nutrition_data = final_df['data_sources'].apply(extract_latest_nutrition)
+        final_df = pd.concat([final_df, nutrition_data], axis=1)
 
         # Convert numeric columns
         numeric_columns = [
-            'proteins', 'carbohydrates', 'fats', 'calories',
-            'proteins_per_100g', 'carbohydrates_per_100g', 'fats_per_100g', 'calories_per_100g'
+            'proteins_per_100g',
+            'carbohydrates_per_100g',
+            'fats_per_100g',
+            'calories_per_100g'
         ]
-
         for col in numeric_columns:
             if col in final_df.columns:
                 final_df[col] = pd.to_numeric(
@@ -177,10 +226,10 @@ def get_ingredients_dataframe() -> pd.DataFrame:
                     errors='coerce'
                 )
 
-        # Sort by ingredient name
-        final_df = final_df.sort_values('primary_name')
+        # Sort by ingredient name and language
+        final_df = final_df.sort_values(['primary_name', 'language'])
 
-        print(f"\nCreated DataFrame with {len(final_df)} ingredients")
+        print(f"\nCreated DataFrame with {len(final_df)} ingredient entries")
         print("\nColumns in the final DataFrame:")
         print(final_df.columns.tolist())
         print("\nSample of the data:")
@@ -192,6 +241,8 @@ def get_ingredients_dataframe() -> pd.DataFrame:
         print(f"Error creating ingredients DataFrame: {str(e)}")
         print("\nDebug information:")
         print(f"Number of name records: {len(names_data)}")
+        print(f"Number of nutrition records: {len(nutrition_data)}")
+        print(f"Number of category records: {len(categories_data)}")
         raise
     finally:
         print("MongoDB connection closed")

@@ -481,80 +481,109 @@ async def find_ingredient(
         # Get the DataFrame from cache
         df = get_cached_ingredients_dataframe()
 
-        # Generate and cache the name-to-english mapping if not already cached
-        global name_to_english_cache
-        if name_to_english_cache is None:
-            name_to_english_cache = generate_name_to_english_mapping(df)
-        name_to_english = name_to_english_cache
-
-        # Define language column mappings
-        lang_columns = {
-            'en': ['primary_name', 'english_name', 'english_synonyms'],
-            'ru': ['primary_name', 'russian_name', 'russian_synonyms'],
-            'es': ['primary_name', 'spanish_name', 'spanish_synonyms'],
-            'he': ['primary_name', 'hebrew_name', 'hebrew_synonyms']
+        # Define language mapping
+        language_mapping = {
+            'en': 'english',
+            'ru': 'russian',
+            'es': 'spanish',
+            'he': 'hebrew'
         }
 
-        # Define language name columns for deduplication
-        lang_name_columns = {
-            'en': 'english_name',
-            'ru': 'russian_name',
-            'es': 'spanish_name',
-            'he': 'hebrew_name'
-        }
-
-        # Validate language
-        if lang not in lang_columns:
+        # Convert short language code to full name
+        full_lang = language_mapping.get(lang.lower())
+        if not full_lang:
             raise HTTPException(
                 status_code=400,
-                detail=f"Unsupported language: {lang}. Supported languages are: {', '.join(lang_columns.keys())}"
+                detail=f"Unsupported language: {lang}. Supported languages are: {', '.join(language_mapping.keys())}"
             )
 
-        # Get columns to search for the given language
-        search_columns = lang_columns[lang]
+        # Define language column mappings for the new structure
+        lang_columns = {
+            'english': ['name', 'synonyms'],
+            'russian': ['name', 'synonyms'],
+            'spanish': ['name', 'synonyms'],
+            'hebrew': ['name', 'synonyms']
+        }
 
-        # Create a mask for each column
-        masks = []
-        for col in search_columns:
-            if col.endswith('_synonyms'):
-                # For synonym columns, check if query is in the list
-                mask = df[col].apply(
-                    lambda x: query.lower() in [s.lower() for s in x] if isinstance(x, list) else False)
-            else:
-                # For name columns, do direct string comparison
-                mask = df[col].str.lower().str.contains(query.lower(), na=False)
-            masks.append(mask)
+        # Filter DataFrame for the requested language
+        lang_df = df[df['language'] == full_lang]
+
+        # Create a mask for name and synonyms
+        name_mask = lang_df['name'].str.lower().str.contains(query.lower(), na=False)
+        # synonym_mask = lang_df['name'].apply(
+        #     lambda x: query.lower() in [s.lower() for s in x] if isinstance(x, list) else False
+        # )
 
         # Combine masks with OR operation
-        final_mask = masks[0]
-        for mask in masks[1:]:
-            final_mask = final_mask | mask
+        final_mask = name_mask # | synonym_mask
 
         # Filter the DataFrame
-        filtered_df = df[final_mask]
+        filtered_df = lang_df[final_mask]
 
-        # Drop duplicates based on the selected language's name column
-        name_column = lang_name_columns[lang]
-        filtered_df = filtered_df.drop_duplicates(subset=[name_column])[
-            ['primary_name', 'category_name', 'english_name', 'russian_name', 'spanish_name', 'hebrew_name',
-             'proteins_per_100g', 'carbohydrates_per_100g', 'fats_per_100g', 'calories_per_100g']]
-        filtered_df.dropna(inplace=True)
-        # Add a column for sorting priority
-        filtered_df['match_type'] = filtered_df[name_column].apply(
-            lambda x: 0 if x.lower() == query.lower() else 1
-        )
+        # Select and rename columns for the response
+        response_columns = {
+            'primary_name': 'primary_name',
+            'name': f'{lang}_name',
+            'category_id': 'category_id',
+            'form': 'form',
+            'proteins_per_100g': 'proteins_per_100g',
+            'carbohydrates_per_100g': 'carbohydrates_per_100g',
+            'fats_per_100g': 'fats_per_100g',
+            'calories_per_100g': 'calories_per_100g',
+            'source': 'source',
+            'possible_measurement': 'possible_measurement',
+            'average_weight': 'average_weight'
+        }
 
-        # Sort by match type (exact matches first) and then by the name column
-        filtered_df = filtered_df.sort_values(['match_type', name_column])
+        # Select only existing columns
+        existing_columns = [col for col in response_columns.keys() if col in filtered_df.columns]
+        filtered_df = filtered_df[existing_columns].rename(columns=response_columns)
+
+        # Convert numeric columns to string with units and set default if None
+        for col in ['proteins_per_100g', 'carbohydrates_per_100g', 'fats_per_100g']:
+            if col in filtered_df.columns:
+                filtered_df[col] = filtered_df[col].apply(lambda x: f"{x}g" if pd.notnull(x) and x != '' else "1g")
+
+        if 'calories_per_100g' in filtered_df.columns:
+            filtered_df['calories_per_100g'] = filtered_df['calories_per_100g'].apply(lambda x: f"{x}kcal" if pd.notnull(x) and x != '' else "1kcal")
+
+        # Set default form value
+        filtered_df['form'] = "-"
+        filtered_df['synonyms_str'] = "-"
+        filtered_df['data_source'] = "-"
+
+        # Convert list fields to strings for deduplication
+        list_columns = ['possible_measurement', 'synonyms']
+        for col in list_columns:
+            if col in filtered_df.columns:
+                filtered_df[col] = filtered_df[col].apply(
+                    lambda x: ','.join(sorted(x)) if isinstance(x, list) else str(x)
+                )
+
+        print('before drop')
+        filtered_df.drop_duplicates(inplace=True)
+
+        # Add match_type: 0 for exact, 1+ for other matches based on position
+        def match_type_func(x):
+            x_lower = x.lower()
+            q_lower = query.lower()
+            if x_lower == q_lower:
+                return 0
+            else:
+                # Find the position of the query in the string
+                pos = x_lower.find(q_lower)
+                if pos == -1:  # Should not happen due to the mask, but just in case
+                    return 999
+                # Return position + 1 (so it's always > 0)
+                return pos + 1
+        filtered_df['match_type'] = filtered_df['primary_name'].apply(match_type_func)
+
+        # Sort by match type (exact first, then by position), then by the name column (ABC)
+        filtered_df = filtered_df.sort_values(['match_type', 'primary_name'])
 
         # Remove the temporary sorting column
         filtered_df = filtered_df.drop('match_type', axis=1)
 
-        # Convert all columns to string type
-        for column in filtered_df.columns:
-            filtered_df[column] = filtered_df[column].astype(str)
-
-        # Convert to list of dictionaries
         results = filtered_df.to_dict('records')
 
         return JSONResponse(content={"results": results})

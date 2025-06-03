@@ -25,8 +25,8 @@ OPENAI_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
 # OPENROUTER_API_KEY = "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"
-OPENROUTER_API_KEY = "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"
-
+# OPENROUTER_API_KEY = "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"
+OPENROUTER_API_KEY = "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"
 # BASE_MODEL_NAME = 'openai/gpt-4o'
 # BASE_MODEL_NAME = 'openai/gpt-4o-mini' #'meta-llama/llama-4-maverick:free'
 BASE_MODEL_NAME = 'google/gemini-2.5-flash-preview'  # 'meta-llama/llama-4-maverick:free'
@@ -34,7 +34,7 @@ MODEL_NAMES = ['openai/gpt-4o-mini', 'meta-llama/llama-4-maverick:free']
 FINAL_MODEL = 'openai/gpt-4o'
 
 
-def save_recipe_to_mongodb(recipe,recipe_info):
+def save_recipe_to_mongodb(recipe, recipe_info):
     """
     Save a recipe to the gpt_recipes collection and extract ingredient nutrition data
     with flattened structure
@@ -43,7 +43,7 @@ def save_recipe_to_mongodb(recipe,recipe_info):
         # Flatten the recipe data
         flattened_recipe = {
             'name': recipe.get('name'),
-            'original_recipe_name':recipe_info['name'],
+            'original_recipe_name': recipe_info['name'],
             'ingredients': recipe.get('ingredients', []),
             'base_ingredient_name': recipe.get('base_ingredient_name', []),
             'instructions': recipe.get('instructions', []),
@@ -56,10 +56,11 @@ def save_recipe_to_mongodb(recipe,recipe_info):
             'cusine': recipe.get('cusine'),
             'course': recipe.get('course'),
             'created_at': datetime.utcnow(),
+            'last_updated': datetime.utcnow(),
             'source_model': recipe.get('source_model'),
             'input_ingredients': recipe.get('input_ingredients', []),
-            'macronutrients_by_ingredient' : recipe.get('macronutrients_by_ingredient'),
-            'kosher':recipe.get('kosher'),
+            'macronutrients_by_ingredient': recipe.get('macronutrients_by_ingredient'),
+            'kosher': recipe.get('kosher'),
             'halal': recipe.get('halal'),
             'gluten_free': recipe.get('gluten_free'),
             'dairy_free': recipe.get('dairy_free'),
@@ -122,14 +123,16 @@ def save_recipe_to_mongodb(recipe,recipe_info):
                     average_weight = nutrition_data.get('average_weight', "")
                     category_doc = {
                         'name': category_name,
-                        'created_at': datetime.utcnow()
+                        'created_at': datetime.utcnow(),
+                        'last_updated': datetime.utcnow()
                     }
                     category_result = ingredient_categories_collection.update_one(
                         {'name': category_name},
                         {'$setOnInsert': category_doc},
                         upsert=True
                     )
-                    category_id = category_result.upserted_id or ingredient_categories_collection.find_one({'name': category_name})['_id']
+                    category_id = category_result.upserted_id or \
+                                  ingredient_categories_collection.find_one({'name': category_name})['_id']
 
                     # Create a flattened document for the ingredient nutrition first
                     nutrition_doc = {
@@ -152,11 +155,12 @@ def save_recipe_to_mongodb(recipe,recipe_info):
                     # Validate nutritional values before saving
                     is_valid, error_message = validate_nutritional_values(
                         nutrition_doc['data_sources'][0],
-                        category=nutrition_data.get('category')
+                        category=nutrition_data.get('category'),
+                        ingredient_name=ingredient_name
                     )
-                    if not is_valid:
-                        print(f"Invalid nutritional values for {ingredient_name}: {error_message}")
-                        continue
+                    # if not is_valid:
+                    #     print(f"Invalid nutritional values for {ingredient_name}: {error_message}")
+                    #     continue
 
                     # Check if this data source already exists for this ingredient
                     existing_doc = ingredients_nutrition_collection.find_one({
@@ -168,16 +172,16 @@ def save_recipe_to_mongodb(recipe,recipe_info):
                         # Update the existing data source if the new data is different
                         new_data = nutrition_doc['data_sources'][0]
                         existing_data = next(
-                            (ds for ds in existing_doc['data_sources'] 
+                            (ds for ds in existing_doc['data_sources']
                              if ds['source'] == new_data['source']),
                             None
                         )
-                        
+
                         if existing_data and (
-                            existing_data['proteins_per_100g'] != new_data['proteins_per_100g'] or
-                            existing_data['carbohydrates_per_100g'] != new_data['carbohydrates_per_100g'] or
-                            existing_data['fats_per_100g'] != new_data['fats_per_100g'] or
-                            existing_data['calories_per_100g'] != new_data['calories_per_100g']
+                                existing_data['proteins_per_100g'] != new_data['proteins_per_100g'] or
+                                existing_data['carbohydrates_per_100g'] != new_data['carbohydrates_per_100g'] or
+                                existing_data['fats_per_100g'] != new_data['fats_per_100g'] or
+                                existing_data['calories_per_100g'] != new_data['calories_per_100g']
                         ):
                             # Update the existing data source with new values
                             ingredients_nutrition_collection.update_one(
@@ -191,7 +195,8 @@ def save_recipe_to_mongodb(recipe,recipe_info):
                                         'data_sources.$.carbohydrates_per_100g': new_data['carbohydrates_per_100g'],
                                         'data_sources.$.fats_per_100g': new_data['fats_per_100g'],
                                         'data_sources.$.calories_per_100g': new_data['calories_per_100g'],
-                                        'data_sources.$.last_updated': new_data['last_updated']
+                                        'data_sources.$.last_updated': new_data['last_updated'],
+                                        'last_updated': datetime.utcnow()
                                     }
                                 }
                             )
@@ -229,42 +234,66 @@ def save_recipe_to_mongodb(recipe,recipe_info):
                             'names': {
                                 'english': {
                                     'singular': {
-                                        'name': nutrition_data.get('names', {}).get('english', {}).get('name', {}).get('singular', ingredient_name),
-                                        'synonyms': nutrition_data.get('names', {}).get('english', {}).get('synonyms', [])
+                                        'name': nutrition_data.get('names', {}).get('english', {}).get('name', {}).get(
+                                            'singular', ingredient_name),
+                                        'synonyms': nutrition_data.get('names', {}).get('english', {}).get('synonyms',
+                                                                                                           [])
                                     },
                                     'plural': {
-                                        'name': nutrition_data.get('names', {}).get('english', {}).get('name', {}).get('plural', nutrition_data.get('names', {}).get('english', {}).get('name', {}).get('singular', ingredient_name)),
-                                        'synonyms': nutrition_data.get('names', {}).get('english', {}).get('synonyms', [])
+                                        'name': nutrition_data.get('names', {}).get('english', {}).get('name', {}).get(
+                                            'plural',
+                                            nutrition_data.get('names', {}).get('english', {}).get('name', {}).get(
+                                                'singular', ingredient_name)),
+                                        'synonyms': nutrition_data.get('names', {}).get('english', {}).get('synonyms',
+                                                                                                           [])
                                     }
                                 },
                                 'russian': {
                                     'singular': {
-                                        'name': nutrition_data.get('names', {}).get('russian', {}).get('name', {}).get('singular', ''),
-                                        'synonyms': nutrition_data.get('names', {}).get('russian', {}).get('synonyms', [])
+                                        'name': nutrition_data.get('names', {}).get('russian', {}).get('name', {}).get(
+                                            'singular', ''),
+                                        'synonyms': nutrition_data.get('names', {}).get('russian', {}).get('synonyms',
+                                                                                                           [])
                                     },
                                     'plural': {
-                                        'name': nutrition_data.get('names', {}).get('russian', {}).get('name', {}).get('plural', nutrition_data.get('names', {}).get('russian', {}).get('name', {}).get('singular', '')),
-                                        'synonyms': nutrition_data.get('names', {}).get('russian', {}).get('synonyms', [])
+                                        'name': nutrition_data.get('names', {}).get('russian', {}).get('name', {}).get(
+                                            'plural',
+                                            nutrition_data.get('names', {}).get('russian', {}).get('name', {}).get(
+                                                'singular', '')),
+                                        'synonyms': nutrition_data.get('names', {}).get('russian', {}).get('synonyms',
+                                                                                                           [])
                                     }
                                 },
                                 'spanish': {
                                     'singular': {
-                                        'name': nutrition_data.get('names', {}).get('spanish', {}).get('name', {}).get('singular', ''),
-                                        'synonyms': nutrition_data.get('names', {}).get('spanish', {}).get('synonyms', [])
+                                        'name': nutrition_data.get('names', {}).get('spanish', {}).get('name', {}).get(
+                                            'singular', ''),
+                                        'synonyms': nutrition_data.get('names', {}).get('spanish', {}).get('synonyms',
+                                                                                                           [])
                                     },
                                     'plural': {
-                                        'name': nutrition_data.get('names', {}).get('spanish', {}).get('name', {}).get('plural', nutrition_data.get('names', {}).get('spanish', {}).get('name', {}).get('singular', '')),
-                                        'synonyms': nutrition_data.get('names', {}).get('spanish', {}).get('synonyms', [])
+                                        'name': nutrition_data.get('names', {}).get('spanish', {}).get('name', {}).get(
+                                            'plural',
+                                            nutrition_data.get('names', {}).get('spanish', {}).get('name', {}).get(
+                                                'singular', '')),
+                                        'synonyms': nutrition_data.get('names', {}).get('spanish', {}).get('synonyms',
+                                                                                                           [])
                                     }
                                 },
                                 'hebrew': {
                                     'singular': {
-                                        'name': nutrition_data.get('names', {}).get('hebrew', {}).get('name', {}).get('singular', ''),
-                                        'synonyms': nutrition_data.get('names', {}).get('hebrew', {}).get('synonyms', [])
+                                        'name': nutrition_data.get('names', {}).get('hebrew', {}).get('name', {}).get(
+                                            'singular', ''),
+                                        'synonyms': nutrition_data.get('names', {}).get('hebrew', {}).get('synonyms',
+                                                                                                          [])
                                     },
                                     'plural': {
-                                        'name': nutrition_data.get('names', {}).get('hebrew', {}).get('name', {}).get('plural', nutrition_data.get('names', {}).get('hebrew', {}).get('name', {}).get('singular', '')),
-                                        'synonyms': nutrition_data.get('names', {}).get('hebrew', {}).get('synonyms', [])
+                                        'name': nutrition_data.get('names', {}).get('hebrew', {}).get('name', {}).get(
+                                            'plural',
+                                            nutrition_data.get('names', {}).get('hebrew', {}).get('name', {}).get(
+                                                'singular', '')),
+                                        'synonyms': nutrition_data.get('names', {}).get('hebrew', {}).get('synonyms',
+                                                                                                          [])
                                     }
                                 }
                             },
@@ -332,6 +361,7 @@ def save_recipe_to_mongodb(recipe,recipe_info):
         print(f"Error saving recipe to MongoDB: {str(e)}")
         return None
 
+
 async def update_recipe(model: str, recipe: Dict) -> List[Dict]:
     """
     Generate a new recipe variation based on an existing recipe.
@@ -349,7 +379,7 @@ async def update_recipe(model: str, recipe: Dict) -> List[Dict]:
             'name': recipe.get('title', ''),
             'ingredients': recipe.get('ingredients', []),
             'instructions': recipe.get('directions', []),
-            'source': recipe.get('source',''),
+            'source': recipe.get('source', ''),
             'tags': recipe.get('tags', ''),
             'url': recipe.get('url', ''),
         }
@@ -361,11 +391,12 @@ async def update_recipe(model: str, recipe: Dict) -> List[Dict]:
                         Return the new recipe in the following structure:
                         IMPORTANT: Your response must be valid JSON - do not include any explanatory text before or after the JSON
                         IMPORTANT: take calroy data from https://www.fatsecret.com/calories-nutrition/usda or https://fdc.nal.usda.gov/ other but write me the source
+                        IMPORTANT: take possible_measurement from https://www.fatsecret.com/calories-nutrition/usda or https://fdc.nal.usda.gov/ other but write me the source and the weight
 
                         {{
                             "name": "New recipe name",
                             "ingredients": ["List of ingredients"],
-                            "base_ingredient_name": ["List of all base ingredients without any modifications / counts, singular and plural for this ingredientwrite in english "],                            
+                            "base_ingredient_name": ["List of all base ingredients without any modifications / counts, singular and plural for this ingredientwrite in english (add the type example Apple (Granny_Smith)) "],                            
                             "instructions": ["Step by step instructions"],
                             "prep_time": "Preparation time in minutes",
                             "cook_time": "Cooking time in minutes",
@@ -382,8 +413,19 @@ async def update_recipe(model: str, recipe: Dict) -> List[Dict]:
                                 "calories": "calorie content (e.g., '350.2kcal')"
                             }},
                             "macronutrients_by_ingredient": {{
-                                "base_ingredient_name": {{
-                                    "category": "one of the list [Fruits,Other,Eggs,Grains,Legumes,Dairy,Vegetables/Fruits,Fish,Fat And Oils,Vegetables,Meat,Herb,Leafy Green,Fruit Juice,Nut,Mushroom,Soy,Alcoholic,Fortified Wine,Nut Recipes,Seed,Dried Fruit,Spice,Citrus,Dairy Alternatives,Sweeteners,Condiment,Root Vegetable,Shellfish,Seafood,Liqueur,Alcohol,Poultry,Olive,Nuts and Seeds,Herbs and Spices,Berry,Tree Nut,Fruit And Oils,Sauces,Liquor,Beverages]",                             
+                                "base_ingredient_name -  (add the type example Apple (Granny_Smith)) , must apper at base_ingredient_name": {{
+                                    "category": "one of the list [Fruits,Other,Eggs,Grains,Legumes,Dairy,Vegetables/Fruits,Fish,Fat And Oils,Vegetables,Meat,Herb,Leafy Green,Fruit Juice,Nut,Mushroom,Soy,Alcoholic,Fortified Wine,Nut Recipes,Seed,Dried Fruit,Spice,Citrus,Dairy Alternatives,Sweeteners,Condiment,Root Vegetable,Shellfish,Seafood,Liqueur,Alcohol,Poultry,Olive,Nuts and Seeds,Herbs and Spices,Berry,Tree Nut,Fruit And Oils,Sauces,Liquor,Beverages]",
+                                     "possible_measurement": {{ e.g --->
+                                        "cup": None,
+                                        "tbsp": None,
+                                        "tsp": None,
+                                        "g": 1,
+                                        "ml": 1,
+                                        "small_raw" : "",
+                                        "medium_raw" : "",
+                                        "large_raw" : "", etc.
+                                        
+                                    }},                             
                                     "possible_measurement": ["e.g., g, ml, tbsp, tsp, cup, etc."],
                                     "base_ingredient_name": ["List of base ingredients without any modifications / counts, singular and plural for this ingredientwrite in english "],
                                     "names": {{
@@ -481,7 +523,8 @@ async def update_recipe(model: str, recipe: Dict) -> List[Dict]:
                         
                         Return the response as a JSON object."""
 
-        model = "google/gemini-2.5-flash-preview"
+        # model = "google/gemini-2.5-flash-preview"
+        model = "google/gemini-flash-1.5"
         # model = "deepseek/deepseek-prover-v2:free"
         # Prepare the API request
         body = {
@@ -511,7 +554,8 @@ async def update_recipe(model: str, recipe: Dict) -> List[Dict]:
         try:
             response_json = openrouter_response.json()
             message_content = response_json["choices"][0]["message"]["content"]
-
+            message_content = message_content.replace("json","")
+            message_content = message_content.replace("```", "")
             # Convert the JSON string inside "content" to a Python dict
             new_recipe = json.loads(message_content)
 
@@ -519,14 +563,14 @@ async def update_recipe(model: str, recipe: Dict) -> List[Dict]:
             new_recipe['created_at'] = datetime.utcnow()
             new_recipe['source_model'] = model
             new_recipe['original_recipe_id'] = recipe.get('_id')
-            if (new_recipe['name']!=recipe_info['name']):
+            if (new_recipe['name'] != recipe_info['name']):
                 new_recipe['original_recipe_name'] = recipe_info['name']
 
             # Save to MongoDB
-            recipe_id = save_recipe_to_mongodb(new_recipe,recipe_info)
+            recipe_id = save_recipe_to_mongodb(new_recipe, recipe_info)
             if recipe_id:
                 new_recipe['_id'] = recipe_id
-                
+
                 # Print recipe details
                 print(f"\nGenerated new recipe variation:")
                 print(f"Name: {new_recipe.get('name', 'N/A')}")
@@ -542,7 +586,7 @@ async def update_recipe(model: str, recipe: Dict) -> List[Dict]:
                 for step in new_recipe.get('instructions', []):
                     print(f"- {step}")
                 print("-" * 80)
-                
+
                 return [new_recipe]
             else:
                 print("Failed to save new recipe to database")
@@ -573,6 +617,11 @@ async def process_recipe(recipe: Dict, model: str = "anthropic/claude-3-opus-202
         bool: True if successful, False otherwise
     """
     try:
+        # Double check: skip if recipe already exists
+        if gpt_recipes_collection.find_one({'name': recipe.get('title', '')}):
+            print(f"[Double Check] Skipping existing recipe: {recipe.get('title', 'Unknown')}")
+            return False
+
         print(f"\nProcessing recipe: {recipe.get('name', 'Unknown')}")
         print(f"Course: {recipe.get('course', 'Any')}")
         print(f"Ingredients: {', '.join(recipe.get('ingredients', []))}")
@@ -609,6 +658,7 @@ async def check_recipe_exists(title: str) -> bool:
         print(f"Error checking recipe existence: {str(e)}")
         return False
 
+
 async def process_recipe_batch(recipes: List[Dict], model: str) -> Tuple[int, int]:
     """
     Process a batch of recipes in parallel, skipping those that already exist.
@@ -626,20 +676,21 @@ async def process_recipe_batch(recipes: List[Dict], model: str) -> Tuple[int, in
         if await check_recipe_exists(recipe.get('title', '')):
             print(f"Skipping existing recipe: {recipe.get('title', 'Unknown')}")
             continue
-            
+
         task = asyncio.create_task(process_recipe(recipe, model))
         tasks.append(task)
-    
+
     if not tasks:
         print("No new recipes to process in this batch")
         return 0, 0
-    
+
     results = await asyncio.gather(*tasks, return_exceptions=True)
-    
+
     processed = len(tasks)
     successful = sum(1 for result in results if result is True)
-    
+
     return processed, successful
+
 
 async def check_recipes_exist(titles: List[str]) -> Dict[str, bool]:
     """
@@ -655,15 +706,16 @@ async def check_recipes_exist(titles: List[str]) -> Dict[str, bool]:
         # Create a query to find all recipes with the given titles
         query = {'name': {'$in': titles}}
         existing_recipes = gpt_recipes_collection.find(query, {'name': 1})
-        
+
         # Create a set of existing recipe names for O(1) lookup
         existing_names = {recipe['name'] for recipe in existing_recipes}
-        
+
         # Create a dictionary mapping each title to its existence status
         return {title: title in existing_names for title in titles}
     except Exception as e:
         print(f"Error checking recipe existence: {str(e)}")
         return {title: False for title in titles}
+
 
 def _convert_to_serializable(value):
     """Convert non-JSON serializable values to strings or remove them"""
@@ -738,6 +790,7 @@ def process_single_image(image_data, is_base64=True):
         print(f"Error processing image: {str(e)}")
         return None
 
+
 def extract_image_details_from_body(body):
     """Extract image details from the request body"""
     image_details = {}
@@ -766,6 +819,7 @@ def extract_image_details_from_body(body):
 
     return image_details
 
+
 async def execute_call(body, model, file_name="", image_path="", version="v1", environment="prod", prompt_id=1):
     start_time = time.time()  # Start timing
 
@@ -789,6 +843,7 @@ async def execute_call(body, model, file_name="", image_path="", version="v1", e
 
     return response
 
+
 def get_random_recipe_sample(sample_size: int = 1000) -> List[Dict]:
     """
     Get a random sample of recipes from the database.
@@ -804,19 +859,20 @@ def get_random_recipe_sample(sample_size: int = 1000) -> List[Dict]:
         pipeline = [
             {"$sample": {"size": sample_size}}
         ]
-        
+
         # Execute the aggregation
         sampled_recipes = list(recipes_collection.aggregate(pipeline))
-        
+
         print(f"Successfully sampled {len(sampled_recipes)} recipes")
         return sampled_recipes
-        
+
     except Exception as e:
         print(f"Error sampling recipes: {str(e)}")
         return []
 
 
-async def generate_recipe_variations(batch_size: int = 10, model: str = "deepseek/deepseek-prover-v2:free", max_concurrent: int = 10):
+async def generate_recipe_variations(batch_size: int = 10, model: str = "deepseek/deepseek-prover-v2:free",
+                                     max_concurrent: int = 10):
     """
     Generate variations of existing recipes using parallel processing.
     
@@ -848,13 +904,13 @@ async def generate_recipe_variations(batch_size: int = 10, model: str = "deepsee
 
             # Get all recipe titles in the batch
             recipe_titles = [recipe.get('title', '') for recipe in recipes]
-            
+
             # Check which recipes already exist
             existing_status = await check_recipes_exist(recipe_titles)
-            
+
             # Filter out existing recipes
             new_recipes = [recipe for recipe in recipes if not existing_status.get(recipe.get('title', ''), False)]
-            
+
             if not new_recipes:
                 print("All recipes in this batch already exist")
                 processed += len(recipes)
@@ -864,7 +920,7 @@ async def generate_recipe_variations(batch_size: int = 10, model: str = "deepsee
 
             # Process the batch
             batch_processed, batch_successful = await process_recipe_batch(new_recipes, model)
-            
+
             # Update statistics
             processed += len(recipes)
             successful += batch_successful
@@ -873,10 +929,10 @@ async def generate_recipe_variations(batch_size: int = 10, model: str = "deepsee
             print(f"\nProgress: {processed}/{total_recipes} recipes processed")
             print(f"Successfully generated variations for {successful} recipes")
             print(f"Skipped {skipped} existing recipes")
-            
+
             # Calculate success rate only if we've processed any recipes
             if processed > 0:
-                success_rate = (successful/processed)*100
+                success_rate = (successful / processed) * 100
                 print(f"Current success rate: {success_rate:.2f}%")
             else:
                 print("No recipes processed yet")
@@ -888,21 +944,21 @@ async def generate_recipe_variations(batch_size: int = 10, model: str = "deepsee
             # Print a summary every 1000 recipes
             if processed % 1000 == 0:
                 print(f"\n=== Progress Summary at {processed} recipes ===")
-                print(f"Total processed: {processed}/{total_recipes} ({(processed/total_recipes)*100:.2f}%)")
+                print(f"Total processed: {processed}/{total_recipes} ({(processed / total_recipes) * 100:.2f}%)")
                 print(f"Successfully generated: {successful}")
                 print(f"Skipped: {skipped}")
                 if processed > 0:
-                    print(f"Success rate: {(successful/processed)*100:.2f}%")
+                    print(f"Success rate: {(successful / processed) * 100:.2f}%")
                 print("=" * 40)
 
         print("\nFinal Statistics:")
         print(f"Total recipes processed: {processed}")
         print(f"Successfully generated variations: {successful}")
         print(f"Skipped existing recipes: {skipped}")
-        
+
         # Calculate final success rate only if we've processed any recipes
         if processed > 0:
-            final_success_rate = (successful/processed)*100
+            final_success_rate = (successful / processed) * 100
             print(f"Overall success rate: {final_success_rate:.2f}%")
         else:
             print("No recipes were processed")
@@ -931,25 +987,28 @@ def save_validation_error(ingredient_name: str, error_message: str, nutrition_da
             'category': category,
             'should_check': True,
             'created_at': datetime.utcnow(),
+            'last_updated': datetime.utcnow(),
             'status': 'pending'  # pending, reviewed, fixed, ignored
         }
-        
+
         # Create or get the validation_errors collection
         validation_errors_collection = recipes_collection.database['validation_errors']
-        
+
         # Insert the error document
         validation_errors_collection.insert_one(error_doc)
-        
+
     except Exception as e:
         print(f"Error saving validation error: {str(e)}")
 
-def validate_nutritional_values(nutrition_data: Dict, category: str = None) -> Tuple[bool, str]:
+
+def validate_nutritional_values(nutrition_data: Dict, category: str = None, ingredient_name: str = None) -> Tuple[bool, str]:
     """
     Validate nutritional values for an ingredient.
     
     Args:
         nutrition_data (Dict): Dictionary containing nutritional values
         category (str): Category of the ingredient (e.g., 'Alcoholic', 'Beverages')
+        ingredient_name (str): Name of the ingredient
         
     Returns:
         Tuple[bool, str]: (is_valid, error_message)
@@ -970,69 +1029,106 @@ def validate_nutritional_values(nutrition_data: Dict, category: str = None) -> T
 
         # Check if this is an alcoholic beverage
         is_alcoholic = category in ['Alcoholic', 'Alcohol', 'Liquor', 'Fortified Wine', 'Liqueur'] or \
-                      any(alcohol_term in str(category).lower() for alcohol_term in ['wine', 'beer', 'spirit', 'liquor'])
+                       any(alcohol_term in str(category).lower() for alcohol_term in
+                           ['wine', 'beer', 'spirit', 'liquor'])
 
         if is_alcoholic:
             # Special validation for alcoholic beverages
             if not (0 <= proteins <= 5):
                 error_msg = f"Invalid protein value for alcoholic beverage: {proteins}g (should be between 0-5g)"
-                save_validation_error(nutrition_data.get('ingredient_name', 'Unknown'), error_msg, nutrition_data, category)
+                save_validation_error(ingredient_name=ingredient_name if ingredient_name else "Unknown",
+                                      error_message=error_msg,
+                                      nutrition_data=nutrition_data,
+                                      category=category)
                 return False, error_msg
             if not (0 <= carbs <= 30):
                 error_msg = f"Invalid carbohydrate value for alcoholic beverage: {carbs}g (should be between 0-30g)"
-                save_validation_error(nutrition_data.get('ingredient_name', 'Unknown'), error_msg, nutrition_data, category)
+                save_validation_error(ingredient_name=ingredient_name if ingredient_name else "Unknown",
+                                      error_message=error_msg,
+                                      nutrition_data=nutrition_data,
+                                      category=category)
                 return False, error_msg
             if not (0 <= fats <= 5):
                 error_msg = f"Invalid fat value for alcoholic beverage: {fats}g (should be between 0-5g)"
-                save_validation_error(nutrition_data.get('ingredient_name', 'Unknown'), error_msg, nutrition_data, category)
+                save_validation_error(ingredient_name=ingredient_name if ingredient_name else "Unknown",
+                                      error_message=error_msg,
+                                      nutrition_data=nutrition_data,
+                                      category=category)
                 return False, error_msg
             if not (0 <= calories <= 350):
                 error_msg = f"Invalid calorie value for alcoholic beverage: {calories}kcal (should be between 0-350kcal)"
-                save_validation_error(nutrition_data.get('ingredient_name', 'Unknown'), error_msg, nutrition_data, category)
+                save_validation_error(ingredient_name=ingredient_name if ingredient_name else "Unknown",
+                                      error_message=error_msg,
+                                      nutrition_data=nutrition_data,
+                                      category=category)
                 return False, error_msg
 
         else:
             # Regular food validation
             if not (0 <= proteins <= 100):
                 error_msg = f"Invalid protein value: {proteins}g (should be between 0-100g)"
-                save_validation_error(nutrition_data.get('ingredient_name', 'Unknown'), error_msg, nutrition_data, category)
+                save_validation_error(ingredient_name=ingredient_name if ingredient_name else "Unknown",
+                                      error_message=error_msg,
+                                      nutrition_data=nutrition_data,
+                                      category=category)
                 return False, error_msg
             if not (0 <= carbs <= 100):
                 error_msg = f"Invalid carbohydrate value: {carbs}g (should be between 0-100g)"
-                save_validation_error(nutrition_data.get('ingredient_name', 'Unknown'), error_msg, nutrition_data, category)
+                save_validation_error(ingredient_name=ingredient_name if ingredient_name else "Unknown",
+                                      error_message=error_msg,
+                                      nutrition_data=nutrition_data,
+                                      category=category)
                 return False, error_msg
             if not (0 <= fats <= 100):
                 error_msg = f"Invalid fat value: {fats}g (should be between 0-100g)"
-                save_validation_error(nutrition_data.get('ingredient_name', 'Unknown'), error_msg, nutrition_data, category)
+                save_validation_error(ingredient_name=ingredient_name if ingredient_name else "Unknown",
+                                      error_message=error_msg,
+                                      nutrition_data=nutrition_data,
+                                      category=category)
                 return False, error_msg
             if not (0 <= calories <= 900):
                 error_msg = f"Invalid calorie value: {calories}kcal (should be between 0-900kcal)"
-                save_validation_error(nutrition_data.get('ingredient_name', 'Unknown'), error_msg, nutrition_data, category)
+                save_validation_error(ingredient_name=ingredient_name if ingredient_name else "Unknown",
+                                      error_message=error_msg,
+                                      nutrition_data=nutrition_data,
+                                      category=category)
                 return False, error_msg
 
             # Validate total macronutrients don't exceed 100g
             total_macros = proteins + carbs + fats
             if total_macros > 100:
                 error_msg = f"Total macronutrients ({total_macros}g) exceed 100g"
-                save_validation_error(nutrition_data.get('ingredient_name', 'Unknown'), error_msg, nutrition_data, category)
+                save_validation_error(ingredient_name=ingredient_name if ingredient_name else "Unknown",
+                                      error_message=error_msg,
+                                      nutrition_data=nutrition_data,
+                                      category=category)
                 return False, error_msg
 
             # Validate calories match macronutrients (roughly)
             calculated_calories = (proteins * 4) + (carbs * 4) + (fats * 9)
             if abs(calculated_calories - calories) > 50:
                 error_msg = f"Calorie calculation mismatch: calculated {calculated_calories}kcal vs provided {calories}kcal"
-                save_validation_error(nutrition_data.get('ingredient_name', 'Unknown'), error_msg, nutrition_data, category)
+                save_validation_error(ingredient_name=ingredient_name if ingredient_name else "Unknown",
+                                      error_message=error_msg,
+                                      nutrition_data=nutrition_data,
+                                      category=category)
                 return False, error_msg
 
         return True, "Valid nutritional values"
 
     except (ValueError, TypeError) as e:
         error_msg = f"Error converting values: {str(e)}"
-        save_validation_error(nutrition_data.get('ingredient_name', 'Unknown'), error_msg, nutrition_data, category)
+        save_validation_error(ingredient_name=ingredient_name if ingredient_name else "Unknown",
+                              error_message=error_msg,
+                              nutrition_data=nutrition_data,
+                              category=category)
         return False, error_msg
     except Exception as e:
         error_msg = f"Validation error: {str(e)}"
-        save_validation_error(nutrition_data.get('ingredient_name', 'Unknown'), error_msg, nutrition_data, category)
+        save_validation_error(ingredient_name=ingredient_name if ingredient_name else "Unknown",
+                              error_message=error_msg,
+                              nutrition_data=nutrition_data,
+                              category=category)
         return False, error_msg
 
 #

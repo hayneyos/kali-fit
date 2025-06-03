@@ -42,6 +42,20 @@ class Settings(BaseSettings):
     STRIPE_SECRET_KEY: str
     PRICE_ID: str
 
+    # RevenueCat Configuration
+    # REVENUECAT_API_KEY: Use the 'Secret API keys' (for server-side operations)
+    # REVENUECAT_WEBHOOK_SECRET: (Set if you use webhooks, not shown in image)
+    # REVENUECAT_APP_ID_ANDROID: Use the App name or identifier for Android (e.g., 'Kali-Fit (Play Store)')
+    # REVENUECAT_APP_ID_IOS: Use the App name or identifier for iOS (e.g., 'Kali-Fit (App Store)')
+    # REVENUECAT_SDK_KEY_ANDROID: Use the SDK API key for Android
+    # REVENUECAT_SDK_KEY_IOS: Use the SDK API key for iOS
+    REVENUECAT_API_KEY: str = ""  # Secret API key (e.g., sk_XOqgwFY...)
+    REVENUECAT_WEBHOOK_SECRET: str = ""  # Webhook secret (if used)
+    REVENUECAT_APP_ID_ANDROID: str = ""  # App name or identifier (e.g., Kali-Fit (Play Store))
+    REVENUECAT_APP_ID_IOS: str = ""  # App name or identifier (e.g., Kali-Fit (App Store))
+    REVENUECAT_SDK_KEY_ANDROID: str = ""  # SDK API key for Android
+    REVENUECAT_SDK_KEY_IOS: str = ""  # SDK API key for iOS
+
     # OpenAI Configuration
     OPENROUTER_API_KEY: str
     PINESCRIPT_OPENROUTER_MODEL: str
