@@ -22,16 +22,31 @@ password_quoted = quote_plus(str(password))
 MONGO_URI = f"mongodb://{username_quoted}:{password_quoted}@{host}:{port}/{db_name}?authSource=admin"
 
 
-def get_mongo_client() -> MongoClient:
+def get_mongo_client(db_name: str = None) -> MongoClient:
     """
     Create and return a MongoDB client connection.
+
+    Args:
+        db_name (str, optional): Name of the database. If not provided, will use environment variable MONGO_DB_NAME or 'default_db'.
 
     Returns:
         MongoClient: MongoDB client instance
     """
     try:
-        print(f"Connecting to MongoDB at {host}:{port}")
-        client = MongoClient(MONGO_URI)
+        # # Get MongoDB connection details from environment variables
+        # mongo_host = os.getenv('MONGO_HOST', '134.199.235.88')
+        # mongo_port = int(os.getenv('MONGO_PORT', '27017'))
+
+        if db_name is None:
+            db_name = os.getenv('MONGO_DB_NAME', 'default_db')
+
+        mongo_uri = f"mongodb://{username_quoted}:{password_quoted}@{host}:{port}/{db_name}?authSource=admin"
+        client = MongoClient(mongo_uri)
+
+        #
+        # # Create MongoDB client
+        # client = MongoClient(f"mongodb://{mongo_host}:{mongo_port}")
+        # print(f"Connecting to MongoDB at {mongo_host}:{mongo_port}")
 
         # Test connection
         client.admin.command('ping')
@@ -56,33 +71,3 @@ ingredient_categories_collection = db['ingredient_categories_v3']
 ingredient_names= db['ingredient_names_v3']
 normalized_ingredients_collection = db['normalized_ingredients_v1']
 ingredient_names_collection = db['ingredient_names_v3']
-
-
-def get_mongo_client() -> MongoClient:
-    """
-    Create and return a MongoDB client connection.
-
-    Returns:
-        MongoClient: MongoDB client instance
-    """
-    try:
-        # # Get MongoDB connection details from environment variables
-        # mongo_host = os.getenv('MONGO_HOST', '134.199.235.88')
-        # mongo_port = int(os.getenv('MONGO_PORT', '27017'))
-
-        mongo_uri = f"mongodb://{username_quoted}:{password_quoted}@{host}:{port}/{db_name}?authSource=admin"
-        client = MongoClient(mongo_uri)
-
-        #
-        # # Create MongoDB client
-        # client = MongoClient(f"mongodb://{mongo_host}:{mongo_port}")
-        # print(f"Connecting to MongoDB at {mongo_host}:{mongo_port}")
-
-        # Test connection
-        client.admin.command('ping')
-        print("Successfully connected to MongoDB")
-
-        return client
-    except Exception as e:
-        print(f"Error connecting to MongoDB: {str(e)}")
-        raise

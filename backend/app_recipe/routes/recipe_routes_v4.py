@@ -37,6 +37,7 @@ router = APIRouter()
 _ingredients_df_cache = None
 name_to_english_cache = None  # Cache for the name-to-english mapping
 
+
 def clean_document(doc):
     for key, value in doc.items():
         if isinstance(value, datetime):
@@ -276,15 +277,17 @@ async def get_recipe(
         difficulty: Optional[str] = None,
         ingredients: Optional[str] = None,
         diet_type: Optional[str] = None,
-        max_prep_time: Optional[str] = None,
+        min_calories: Optional[float] = None,
+        max_calories: Optional[float] = None,
         min_proteins: Optional[float] = None,
         max_proteins: Optional[float] = None,
+        max_prep_time: Optional[str] = None,
+
         min_carbs: Optional[float] = None,
         max_carbs: Optional[float] = None,
         min_fats: Optional[float] = None,
         max_fats: Optional[float] = None,
-        min_calories: Optional[float] = None,
-        max_calories: Optional[float] = None,
+
         limit: int = 10,
         skip: int = 0
 ):

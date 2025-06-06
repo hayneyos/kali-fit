@@ -23,6 +23,10 @@ import uvicorn
 # from backend.app_recipe.routes.recipe_routes import router as recipe_router
 from backend.app_recipe.routes.recipe_routes_v4 import router as recipe_router
 from backend.app_recipe.routes.revenuecat_routes import router as revenuecat_router
+from backend.app_recipe.routes.revenuecat_routes import router as revenuecat_router
+from backend.app_recipe.routes.rtdn_routes import router as rtdb_router
+from backend.app_recipe.routes.influencer_routes  import router as influencer_router
+
 
 
 # Configure logger
@@ -106,6 +110,9 @@ logger.info(f"Allowed origins: {origins}")
 app.include_router(recipe_router)
 app.include_router(revenuecat_router)
 
+app.include_router(rtdb_router)
+app.include_router(influencer_router)
+
 @app.exception_handler(HTTPException)
 async def custom_http_exception_handler(request: Request, exc: HTTPException):
     """Handles HTTP exceptions and returns JSON response."""
@@ -157,7 +164,7 @@ if __name__ == "__main__":
     uvicorn.run(
         "main:app",
         host=os.getenv('SERVER_HOST', '0.0.0.0'),
-        port=int(os.getenv('SERVER_PORT', 8093)),
+        port=int(os.getenv('SERVER_PORT', 8091)),
         loop="uvloop",
         limit_concurrency=1000,
         backlog=2048,
