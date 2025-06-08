@@ -54,3 +54,4 @@ Thumbs.db
 *.xlsx
 *.xls 
 /logs/
+backend/app_recipe/db/serviceAccountKey.json
