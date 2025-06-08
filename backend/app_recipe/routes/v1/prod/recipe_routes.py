@@ -1,20 +1,14 @@
 import logging
 import os
-import time
 import asyncio
 from typing import Optional, List, Dict, Any, Union
 import json
 from datetime import datetime
-import pandas as pd
 
-import httpx
-from fastapi import APIRouter, Request, HTTPException, UploadFile, File
+from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
-from starlette.responses import FileResponse
 
-from backend.app_recipe.consts import RECIPE_FOLDER_APP
-from backend.app_recipe.utils.ingredient_utils import get_ingredients_dataframe
 from backend.app_recipe.utils.logger import LoggerConfig, get_logger
 from backend.app_recipe.utils.mongo_handler_utils import get_mongo_client
 
@@ -33,10 +27,6 @@ logger = get_logger('recipe_routes')
 # Load environment variables
 router = APIRouter()
 
-# Cache for ingredients DataFrame
-_ingredients_df_cache = None
-name_to_english_cache = None  # Cache for the name-to-english mapping
-
 
 def clean_document(doc):
     for key, value in doc.items():
@@ -45,24 +35,6 @@ def clean_document(doc):
         elif isinstance(value, dict):
             clean_document(value)
     return doc
-
-def get_cached_ingredients_dataframe():
-    """Get ingredients DataFrame from cache or fetch if not cached"""
-    global _ingredients_df_cache
-    if _ingredients_df_cache is None:
-        _ingredients_df_cache = get_ingredients_dataframe()
-    return _ingredients_df_cache
-
-def generate_name_to_english_mapping(df):
-    mapping = {}
-    lang_columns = ['english_name', 'russian_name', 'spanish_name', 'hebrew_name']
-    for _, row in df.iterrows():
-        english = str(row['english_name']) if pd.notnull(row['english_name']) else ''
-        for col in lang_columns:
-            val = row[col]
-            if pd.notnull(val) and str(val).strip():
-                mapping[str(val).strip()] = english
-    return mapping
 
 async def translate_json_values(json_data: Union[dict, list]) -> Union[dict, list]:
     """
@@ -470,256 +442,3 @@ async def get_recipe(
             status_code=500,
             content={"error": f"Error searching recipes: {str(e)}"}
         )
-
-@router.get("/find_ingredient")
-async def find_ingredient(
-        query: str,
-        lang: str,
-        request: Request = None
-):
-    try:
-        # Log the incoming request
-        logger.info(f"Finding ingredient for query: {query} in language: {lang}")
-
-        # Get the DataFrame from cache
-        df = get_cached_ingredients_dataframe()
-
-        # Define language mapping
-        language_mapping = {
-            'en': 'english',
-            'ru': 'russian',
-            'es': 'spanish',
-            'he': 'hebrew'
-        }
-
-        # Convert short language code to full name
-        full_lang = language_mapping.get(lang.lower())
-        if not full_lang:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Unsupported language: {lang}. Supported languages are: {', '.join(language_mapping.keys())}"
-            )
-
-        # Define language column mappings for the new structure
-        lang_columns = {
-            'english': ['name', 'synonyms'],
-            'russian': ['name', 'synonyms'],
-            'spanish': ['name', 'synonyms'],
-            'hebrew': ['name', 'synonyms']
-        }
-
-        # Filter DataFrame for the requested language
-        lang_df = df[df['language'] == full_lang]
-
-        # Create a mask for name and synonyms
-        name_mask = lang_df['name'].str.lower().str.contains(query.lower(), na=False)
-        # synonym_mask = lang_df['name'].apply(
-        #     lambda x: query.lower() in [s.lower() for s in x] if isinstance(x, list) else False
-        # )
-
-        # Combine masks with OR operation
-        final_mask = name_mask # | synonym_mask
-
-        # Filter the DataFrame
-        filtered_df = lang_df[final_mask]
-
-        # Select and rename columns for the response
-        response_columns = {
-            'primary_name': 'primary_name',
-            'name': f'{lang}_name',
-            'category_id': 'category_id',
-            'form': 'form',
-            'proteins_per_100g': 'proteins_per_100g',
-            'carbohydrates_per_100g': 'carbohydrates_per_100g',
-            'fats_per_100g': 'fats_per_100g',
-            'calories_per_100g': 'calories_per_100g',
-            'source': 'source',
-            'possible_measurement': 'possible_measurement',
-            'average_weight': 'average_weight'
-        }
-
-        # Select only existing columns
-        existing_columns = [col for col in response_columns.keys() if col in filtered_df.columns]
-        filtered_df = filtered_df[existing_columns].rename(columns=response_columns)
-
-        # Convert numeric columns to string with units and set default if None
-        for col in ['proteins_per_100g', 'carbohydrates_per_100g', 'fats_per_100g']:
-            if col in filtered_df.columns:
-                filtered_df[col] = filtered_df[col].apply(lambda x: f"{x}g" if pd.notnull(x) and x != '' else "1g")
-
-        if 'calories_per_100g' in filtered_df.columns:
-            filtered_df['calories_per_100g'] = filtered_df['calories_per_100g'].apply(lambda x: f"{x}kcal" if pd.notnull(x) and x != '' else "1kcal")
-
-        # Set default form value
-        filtered_df['form'] = "-"
-        filtered_df['synonyms_str'] = "-"
-        filtered_df['data_source'] = "-"
-
-        # Convert list fields to strings for deduplication
-        list_columns = ['possible_measurement', 'synonyms']
-        for col in list_columns:
-            if col in filtered_df.columns:
-                filtered_df[col] = filtered_df[col].apply(
-                    lambda x: ','.join(sorted(x)) if isinstance(x, list) else str(x)
-                )
-
-        print('before drop')
-        filtered_df.drop_duplicates(inplace=True)
-
-        # Add match_type: 0 for exact, 1+ for other matches based on position
-        def match_type_func(x):
-            x_lower = x.lower()
-            q_lower = query.lower()
-            if x_lower == q_lower:
-                return 0
-            else:
-                # Find the position of the query in the string
-                pos = x_lower.find(q_lower)
-                if pos == -1:  # Should not happen due to the mask, but just in case
-                    return 999
-                # Return position + 1 (so it's always > 0)
-                return pos + 1
-        filtered_df['match_type'] = filtered_df['primary_name'].apply(match_type_func)
-
-        # Sort by match type (exact first, then by position), then by the name column (ABC)
-        filtered_df = filtered_df.sort_values(['match_type', 'primary_name'])
-
-        # Remove the temporary sorting column
-        filtered_df = filtered_df.drop('match_type', axis=1)
-
-        results = filtered_df.to_dict('records')
-
-        return JSONResponse(content={"results": results})
-
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        error_msg = f"Error finding ingredient: {str(e)}"
-        logger.error(error_msg)
-        raise HTTPException(status_code=500, detail=error_msg)
-
-@router.post("/analyze_refrigerator")
-async def analyze_refrigerator(
-        file: UploadFile = File(..., description="The image file to analyze"),
-        request: Request = None
-):
-    try:
-        # Validate file type
-        if not file.content_type.startswith('image/'):
-            raise HTTPException(
-                status_code=400,
-                detail="File must be an image"
-            )
-
-        # Generate a unique filename
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"fridge_{timestamp}_{file.filename}"
-
-        # Create upload directory if it doesn't exist
-        os.makedirs(RECIPE_FOLDER_APP, exist_ok=True)
-
-        # Save the uploaded file
-        file_location = os.path.join(RECIPE_FOLDER_APP, filename)
-        with open(file_location, "wb") as f:
-            content = await file.read()
-            f.write(content)
-
-        # Prepare the image URL
-        image_url = f"https://{MY_SERVER_NAME}/recipe/uploads/{filename}"
-        logger.info(f"Image saved and URL generated: {image_url}")
-
-        model = BASE_MODEL_NAME
-
-        PROMPT = """Analyze this image and identify all visible food items and ingredients.
-        Return a JSON object with the following structure:
-        {
-            "ingredients": [
-                {
-                    "name": "string (name of the ingredient)",
-                    "quantity": "string (estimated quantity)",
-                    "confidence": number (0-100),
-                    "location": "string (e.g., 'top shelf', 'door', 'drawer')",
-                    "expiry_status": "string (e.g., 'fresh', 'expiring soon', 'expired')"
-                }
-            ],
-            "total_items": number,
-            "refrigerator_status": "string (e.g., 'well-stocked', 'needs restocking', 'empty')",
-            "recommendations": ["string (list of recommendations)"]
-        }
-        """
-
-        HEADERS = {
-            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://yourdomain.com",
-            "X-Title": "FridgeVisionAnalyzer"
-        }
-
-        # Make the API call
-        async with httpx.AsyncClient() as client:
-            body = {
-                "model": model,
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": PROMPT},
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": image_url,
-                                    "detail": "high"
-                                }
-                            }
-                        ]
-                    }
-                ],
-                "max_tokens": 1000,
-                "response_format": {"type": "json_object"}
-            }
-
-            logger.info(f"Sending request to OpenRouter with body: {json.dumps(body, indent=2)}")
-
-            response = await client.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers=HEADERS,
-                json=body,
-                timeout=60.0
-            )
-
-            if response.status_code != 200:
-                error_detail = f"OpenRouter API error: {response.status_code} - {response.text}"
-                logger.error(error_detail)
-                raise HTTPException(status_code=500, detail=error_detail)
-
-            response_data = response.json()
-            logger.info(f"Received response from OpenRouter: {json.dumps(response_data, indent=2)}")
-
-            result = response_data["choices"][0]["message"]["content"]
-
-            # Parse the JSON response
-            try:
-                result_json = json.loads(result)
-                return JSONResponse(content=result_json)
-            except json.JSONDecodeError as e:
-                error_msg = f"Failed to parse analysis result: {str(e)}"
-                logger.error(error_msg)
-                return JSONResponse(
-                    status_code=500,
-                    content={"error": error_msg, "raw_result": result}
-                )
-
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        error_msg = f"Error analyzing refrigerator image: {str(e)}"
-        logger.error(error_msg)
-        raise HTTPException(status_code=500, detail=error_msg)
-
-
-@router.get("/uploads/{filename}")
-async def uploaded_file(filename: str):
-    file_path = os.path.join(RECIPE_FOLDER_APP, filename)
-    if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="File not found")
-    return FileResponse(file_path)

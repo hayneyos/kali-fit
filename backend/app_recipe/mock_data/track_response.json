@@ -1,0 +1,14 @@
+{
+  "email": {
+    "value": "test@example.com",
+    "count": 1
+  },
+  "device_id": {
+    "value": "test_device_123",
+    "count": 1
+  },
+  "ip": {
+    "value": "testclient",
+    "count": 1
+  }
+}

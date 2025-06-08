@@ -1,0 +1,20 @@
+{
+  "bmi": 24.5,
+  "bmr": 1800,
+  "tdee": 2700,
+  "daily_calories": 2500,
+  "recommended_min": 2000,
+  "recommended_max": 3000,
+  "weight": 70.0,
+  "height": 170.0,
+  "age": 30,
+  "gender": "gender_male",
+  "diet_type": "balanced",
+  "weekly_goal_kg": 0.5,
+  "main_goal": "weight_loss",
+  "weight_goal": 65.0,
+  "social": "private",
+  "protein_g": 150,
+  "carbs_g": 250,
+  "fats_g": 83
+}

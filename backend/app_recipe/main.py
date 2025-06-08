@@ -13,20 +13,22 @@ from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import Response
-import time
-import redis
+
 from dotenv import load_dotenv
 import uvicorn
-# from backend.app_recipe.middleware.rate_limiter import RateLimitMiddleware
-# from backend.app_recipe.routes.recipe_routes import router as recipe_router
-from backend.app_recipe.routes.recipe_routes_v4 import router as recipe_router
-from backend.app_recipe.routes.revenuecat_routes import router as revenuecat_router
-from backend.app_recipe.routes.revenuecat_routes import router as revenuecat_router
-from backend.app_recipe.routes.rtdn_routes import router as rtdb_router
-from backend.app_recipe.routes.influencer_routes  import router as influencer_router
+from backend.app_recipe.routes.v1.mock.mock_model_routes import router as mock_model_router
 
+
+from backend.app_recipe.routes.v1.outer_poc.revenuecat_routes import router as revenuecat_router
+from backend.app_recipe.routes.v1.outer_poc.rtdn_routes import router as rtdb_router
+from backend.app_recipe.routes.v1.outer_poc.influencer_routes  import router as influencer_router
+
+from backend.app_recipe.routes.v1.prod.wizard_routes import  router as wizard_router
+from backend.app_recipe.routes.v1.prod.meals_routes import router as meals_router
+from backend.app_recipe.routes.v1.prod.model_routes import router as model_router
+from backend.app_recipe.routes.v1.prod.recipe_routes import router as recipe_router
+from backend.app_recipe.routes.v1.prod.common_routes import router as common_router
+from backend.app_recipe.routes.v1.prod.fit_routes import router as fit_router
 
 
 # Configure logger
@@ -106,12 +108,25 @@ logger.info(f"Allowed origins: {origins}")
 # Add rate limit middleware
 # rate_limit_middleware = RateLimitMiddleware(app)
 # app.add_middleware(rate_limit_middleware.__class__)
+app.include_router(model_router)
+app.include_router(mock_model_router)
 
 app.include_router(recipe_router)
 app.include_router(revenuecat_router)
+app.include_router(common_router)
+
 
 app.include_router(rtdb_router)
 app.include_router(influencer_router)
+app.include_router(meals_router)
+
+app.include_router(wizard_router)
+
+app.include_router(fit_router)
+
+
+
+
 
 @app.exception_handler(HTTPException)
 async def custom_http_exception_handler(request: Request, exc: HTTPException):
@@ -161,13 +176,17 @@ async def handle_event_options():
     )
 
 if __name__ == "__main__":
-    uvicorn.run(
-        "main:app",
-        host=os.getenv('SERVER_HOST', '0.0.0.0'),
-        port=int(os.getenv('SERVER_PORT', 8091)),
-        loop="uvloop",
-        limit_concurrency=1000,
-        backlog=2048,
-        workers=1,
-        reload=False
-    )
+    # if os.getenv("ENV", "dev") == "dev":
+    # os.system("uvicorn main:app --host 0.0.0.0 --port 8091 --reload")
+    # else:
+        uvicorn.run(
+            "main:app",
+            host=os.getenv('SERVER_HOST', '0.0.0.0'),
+            port=int(os.getenv('SERVER_PORT', 8091)),
+            loop="uvloop",
+            limit_concurrency=1000,
+            backlog=2048,
+            workers=1,
+            reload=True,  # Enables hot reload (use only in development)
+            log_level="debug"
+        )

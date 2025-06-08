@@ -13,8 +13,9 @@ VERIFY_TOKEN = settings.VERIFY_TOKEN
 UPLOAD_FOLDER = f"{settings.DATA_DIR}/uploads"
 UPLOAD_FOLDER_WEB = f"{settings.DATA_DIR}/uploads/web"
 UPLOAD_FOLDER_APP = f"{settings.DATA_DIR}/uploads/app"
-UPLOAD_FOLDER_APP = f"{settings.DATA_DIR}/uploads/app"
 RECIPE_FOLDER_APP = f"{settings.DATA_DIR}/uploads/recipe"
+MOCK_FOLDER = f"{settings.DATA_DIR}/mock"
+
 
 UPLOAD_FOLDER_CHEN_APP = f"/home/data/chendesign/images/"
 BASE_MODEL_NAME = 'google/gemini-2.5-flash-preview'  # 'meta-llama/llama-4-maverick:free'
